@@ -1,0 +1,15 @@
+run = "streamlit run main.py --server.headless true --server.port 8080 --server.address 0.0.0.0"
+
+[nix]
+channel = "stable-23_11"
+
+[env]
+PYTHONPATH = "${REPL_HOME}"
+
+[deployment]
+run = ["streamlit", "run", "main.py", "--server.headless", "true", "--server.port", "8080", "--server.address", "0.0.0.0"]
+deploymentTarget = "cloudrun"
+
+[[ports]]
+localPort = 8080
+externalPort = 80
