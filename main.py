@@ -1,254 +1,356 @@
-"""
-ONLY COMPTA - OCR Notaires
-Convertisseur de relevés PDF notaires en écritures comptables Excel
-"""
-
 import streamlit as st
 import pandas as pd
+from datetime import datetime
 import io
 from utils.pdf_processor import PDFProcessor
 
-# Configuration
+# Configuration de la page
 st.set_page_config(
-    page_title="ONLY COMPTA - OCR Notaires",
+    page_title="OCR Notaires - ONLY COMPTA",
     page_icon="⚖️",
     layout="wide",
-    initial_sidebar_state="collapsed"
+    initial_sidebar_state="expanded"
 )
 
-# Styles CSS personnalisés
+# CSS personnalisé
 st.markdown("""
-<style>
+    <style>
     .main-header {
         font-size: 2.5rem;
-        color: #1f77b4;
+        font-weight: bold;
+        color: #1f4788;
         text-align: center;
-        margin-bottom: 1rem;
+        margin-bottom: 0.5rem;
     }
-    .stAlert {
-        background-color: #f0f2f6;
-    }
-    .upload-text {
-        text-align: center;
+    .sub-header {
+        font-size: 1.2rem;
         color: #666;
+        text-align: center;
+        margin-bottom: 2rem;
     }
-</style>
+    .metric-container {
+        background-color: #f0f2f6;
+        padding: 1rem;
+        border-radius: 0.5rem;
+        margin: 0.5rem 0;
+    }
+    .success-box {
+        background-color: #d4edda;
+        border: 1px solid #c3e6cb;
+        color: #155724;
+        padding: 1rem;
+        border-radius: 0.5rem;
+        margin: 1rem 0;
+    }
+    .warning-box {
+        background-color: #fff3cd;
+        border: 1px solid #ffeeba;
+        color: #856404;
+        padding: 1rem;
+        border-radius: 0.5rem;
+        margin: 1rem 0;
+    }
+    .error-box {
+        background-color: #f8d7da;
+        border: 1px solid #f5c6cb;
+        color: #721c24;
+        padding: 1rem;
+        border-radius: 0.5rem;
+        margin: 1rem 0;
+    }
+    .footer {
+        text-align: center;
+        color: #888;
+        padding: 2rem 0 1rem 0;
+        margin-top: 3rem;
+        border-top: 1px solid #ddd;
+    }
+    </style>
 """, unsafe_allow_html=True)
 
-# Header
-st.markdown('<h1 class="main-header">⚖️ ONLY COMPTA - OCR Notaires</h1>', unsafe_allow_html=True)
-st.markdown('<p class="upload-text">Transformez vos relevés PDF en écritures comptables Excel</p>', unsafe_allow_html=True)
+# En-tête
+st.markdown('<div class="main-header">⚖️ ONLY COMPTA - OCR Notaires</div>', unsafe_allow_html=True)
+st.markdown('<div class="sub-header">Convertissez vos relevés PDF en écritures comptables Excel</div>', unsafe_allow_html=True)
 
-# Sidebar - Informations
+# Barre latérale
 with st.sidebar:
     st.header("ℹ️ Informations")
     st.info("""
-    **Limites :**
-    - Fichiers jusqu'à 50 MB
-    - Maximum 30 pages
-    - Formats : PDF natif ou scanné
-    
     **Format de sortie :**
-    6 colonnes Excel :
     - Date
-    - Pièce
+    - Piece
     - Compte
     - Libellé
     - Débit
     - Crédit
+    
+    **Limites :**
+    - Taille max : 50 MB
+    - Pages par défaut : 30
+    - Format : PDF uniquement
     """)
     
-    st.header("🔧 Paramètres")
-    max_pages = st.slider("Pages max à traiter", 5, 50, 30)
-    resolution_ocr = st.select_slider("Qualité OCR", options=[100, 150, 200, 300], value=150)
+    st.header("⚙️ Paramètres")
+    max_pages = st.number_input(
+        "Pages maximum à traiter",
+        min_value=1,
+        max_value=100,
+        value=30,
+        help="Limite le nombre de pages pour accélérer le traitement"
+    )
     
-    st.divider()
-    st.caption("Version 1.0.0 - ONLY COMPTA")
+    ocr_resolution = st.selectbox(
+        "Résolution OCR (si nécessaire)",
+        options=[150, 200, 300],
+        index=1,
+        help="Plus élevé = meilleure qualité mais plus lent"
+    )
 
-# Zone d'upload
+# Zone principale
 uploaded_file = st.file_uploader(
-    "📄 Déposez votre relevé PDF ici",
+    "📄 Sélectionnez votre relevé PDF",
     type=["pdf"],
-    help="Fichier PDF de relevé notaire (max 50 MB)"
+    help="Glissez-déposez votre fichier ou cliquez pour parcourir"
 )
 
-# Traitement
 if uploaded_file is not None:
-    # Vérification taille
-    file_size_mb = uploaded_file.size / (1024 * 1024)
+    # Vérification de la taille
+    file_size = len(uploaded_file.getvalue()) / (1024 * 1024)  # MB
     
-    if file_size_mb > 50:
-        st.error(f"❌ Fichier trop volumineux : {file_size_mb:.1f} MB (maximum 50 MB)")
-        st.stop()
-    
-    # Affichage infos fichier
-    col1, col2, col3 = st.columns(3)
-    with col1:
-        st.metric("📄 Fichier", uploaded_file.name)
-    with col2:
-        st.metric("💾 Taille", f"{file_size_mb:.2f} MB")
-    with col3:
-        st.metric("📅 Type", "PDF")
-    
-    st.divider()
-    
-    # Traitement du PDF
-    try:
-        processor = PDFProcessor(max_pages=max_pages, ocr_resolution=resolution_ocr)
+    if file_size > 50:
+        st.markdown(f"""
+            <div class="error-box">
+                <strong>⚠️ Fichier trop volumineux</strong><br>
+                Taille actuelle: {file_size:.1f} MB<br>
+                Limite: 50 MB
+            </div>
+        """, unsafe_allow_html=True)
+    else:
+        st.markdown(f"""
+            <div class="success-box">
+                <strong>✅ Fichier chargé</strong><br>
+                Nom: {uploaded_file.name}<br>
+                Taille: {file_size:.2f} MB
+            </div>
+        """, unsafe_allow_html=True)
         
-        # Lecture du fichier
-        file_bytes = uploaded_file.read()
-        
-        # Traitement avec barre de progression
-        with st.spinner('🔄 Analyse du document en cours...'):
-            df, stats = processor.process_pdf(file_bytes)
-        
-        # Affichage des statistiques
-        st.success("✅ Traitement terminé avec succès !")
-        
-        col1, col2, col3, col4 = st.columns(4)
-        with col1:
-            st.metric("📄 Pages traitées", stats['pages_processed'])
-        with col2:
-            st.metric("📊 Lignes extraites", stats['lines_extracted'])
-        with col3:
-            st.metric("🔍 Méthode", stats['method'])
-        with col4:
-            st.metric("⏱️ Temps", f"{stats['processing_time']:.1f}s")
-        
-        st.divider()
-        
-        # Prévisualisation des données
-        st.subheader("📊 Aperçu des données extraites")
-        
-        # Filtres
-        col1, col2 = st.columns(2)
-        with col1:
-            filter_date = st.text_input("🔍 Filtrer par date", placeholder="Ex: 01/01/2024")
-        with col2:
-            filter_libelle = st.text_input("🔍 Filtrer par libellé", placeholder="Ex: honoraires")
-        
-        # Application des filtres
-        df_filtered = df.copy()
-        if filter_date:
-            df_filtered = df_filtered[df_filtered['Date'].str.contains(filter_date, na=False)]
-        if filter_libelle:
-            df_filtered = df_filtered[df_filtered['Libelle'].str.contains(filter_libelle, case=False, na=False)]
-        
-        # Affichage tableau
-        st.dataframe(
-            df_filtered,
-            use_container_width=True,
-            height=400,
-            column_config={
-                "Date": st.column_config.TextColumn("Date", width="small"),
-                "Piece": st.column_config.TextColumn("Pièce", width="small"),
-                "Compte": st.column_config.TextColumn("Compte", width="small"),
-                "Libelle": st.column_config.TextColumn("Libellé", width="large"),
-                "Debit": st.column_config.NumberColumn("Débit", format="%.2f €"),
-                "Credit": st.column_config.NumberColumn("Crédit", format="%.2f €"),
-            }
-        )
-        
-        # Statistiques tableau
-        st.caption(f"Affichage de {len(df_filtered)} ligne(s) sur {len(df)} au total")
-        
-        st.divider()
-        
-        # Export Excel
-        st.subheader("📥 Téléchargement")
-        
-        output = io.BytesIO()
-        with pd.ExcelWriter(output, engine='openpyxl') as writer:
-            df.to_excel(writer, index=False, sheet_name='Ecritures')
-            
-            # Formatage Excel
-            workbook = writer.book
-            worksheet = writer.sheets['Ecritures']
-            
-            # Largeur des colonnes
-            worksheet.column_dimensions['A'].width = 12  # Date
-            worksheet.column_dimensions['B'].width = 10  # Pièce
-            worksheet.column_dimensions['C'].width = 10  # Compte
-            worksheet.column_dimensions['D'].width = 50  # Libellé
-            worksheet.column_dimensions['E'].width = 12  # Débit
-            worksheet.column_dimensions['F'].width = 12  # Crédit
-        
-        output.seek(0)
-        
-        col1, col2 = st.columns([3, 1])
-        with col1:
-            st.download_button(
-                label="📥 Télécharger le fichier Excel",
-                data=output.getvalue(),
-                file_name=f"import_compta_{pd.Timestamp.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
-                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                use_container_width=True,
-                type="primary"
-            )
-        with col2:
-            # Bouton export CSV (bonus)
-            csv = df.to_csv(index=False).encode('utf-8')
-            st.download_button(
-                label="📄 Export CSV",
-                data=csv,
-                file_name=f"import_compta_{pd.Timestamp.now().strftime('%Y%m%d_%H%M%S')}.csv",
-                mime="text/csv",
-                use_container_width=True
-            )
-        
-    except Exception as e:
-        st.error(f"❌ Erreur lors du traitement : {str(e)}")
-        with st.expander("🔍 Détails de l'erreur"):
-            st.exception(e)
-            st.info("""
-            **Suggestions :**
-            - Vérifiez que le PDF n'est pas protégé par mot de passe
-            - Assurez-vous que le PDF contient du texte (pas seulement des images)
-            - Essayez de réduire la taille du fichier
-            - Contactez le support si l'erreur persiste
-            """)
+        # Bouton de traitement
+        if st.button("🚀 Lancer l'extraction", type="primary", use_container_width=True):
+            with st.spinner("🔄 Traitement en cours..."):
+                try:
+                    # Initialiser le processeur
+                    processor = PDFProcessor(
+                        max_pages=max_pages,
+                        ocr_resolution=ocr_resolution
+                    )
+                    
+                    # Traiter le PDF
+                    df, stats = processor.process_pdf(uploaded_file)
+                    
+                    # Afficher les statistiques
+                    st.markdown("### 📊 Résultats")
+                    col1, col2, col3, col4 = st.columns(4)
+                    
+                    with col1:
+                        st.metric(
+                            "Pages traitées",
+                            stats['pages_processed'],
+                            delta=None
+                        )
+                    
+                    with col2:
+                        st.metric(
+                            "Lignes extraites",
+                            stats['lines_extracted'],
+                            delta=None
+                        )
+                    
+                    with col3:
+                        st.metric(
+                            "Méthode",
+                            stats['method'],
+                            delta=None
+                        )
+                    
+                    with col4:
+                        st.metric(
+                            "Temps",
+                            f"{stats['processing_time']:.1f}s",
+                            delta=None
+                        )
+                    
+                    # Prévisualisation des données
+                    if len(df) > 0:
+                        st.markdown("### 👁️ Aperçu des données")
+                        
+                        # Filtres
+                        col_filter1, col_filter2 = st.columns(2)
+                        with col_filter1:
+                            filter_date = st.text_input(
+                                "🔍 Filtrer par date",
+                                placeholder="Ex: 01/01/2024",
+                                help="Laissez vide pour tout afficher"
+                            )
+                        with col_filter2:
+                            filter_libelle = st.text_input(
+                                "🔍 Filtrer par libellé",
+                                placeholder="Ex: virement",
+                                help="Recherche insensible à la casse"
+                            )
+                        
+                        # Appliquer les filtres
+                        df_filtered = df.copy()
+                        if filter_date:
+                            df_filtered = df_filtered[df_filtered['Date'].str.contains(filter_date, na=False, case=False)]
+                        if filter_libelle:
+                            df_filtered = df_filtered[df_filtered['Libelle'].str.contains(filter_libelle, na=False, case=False)]
+                        
+                        # Afficher le dataframe
+                        st.dataframe(
+                            df_filtered,
+                            use_container_width=True,
+                            column_config={
+                                "Date": st.column_config.TextColumn("Date", width="small"),
+                                "Piece": st.column_config.TextColumn("Pièce", width="small"),
+                                "Compte": st.column_config.TextColumn("Compte", width="small"),
+                                "Libelle": st.column_config.TextColumn("Libellé", width="large"),
+                                "Debit": st.column_config.NumberColumn("Débit", format="%.2f"),
+                                "Credit": st.column_config.NumberColumn("Crédit", format="%.2f")
+                            }
+                        )
+                        
+                        st.info(f"📌 Affichage de {len(df_filtered)} lignes sur {len(df)} au total")
+                        
+                        # Génération du fichier Excel
+                        st.markdown("### 📥 Téléchargement")
+                        
+                        output = io.BytesIO()
+                        with pd.ExcelWriter(output, engine='openpyxl') as writer:
+                            df.to_excel(writer, index=False, sheet_name='Ecritures')
+                            
+                            # Formatage des colonnes
+                            worksheet = writer.sheets['Ecritures']
+                            worksheet.column_dimensions['A'].width = 12  # Date
+                            worksheet.column_dimensions['B'].width = 12  # Piece
+                            worksheet.column_dimensions['C'].width = 12  # Compte
+                            worksheet.column_dimensions['D'].width = 50  # Libelle
+                            worksheet.column_dimensions['E'].width = 15  # Debit
+                            worksheet.column_dimensions['F'].width = 15  # Credit
+                        
+                        output.seek(0)
+                        
+                        # Boutons de téléchargement
+                        col_dl1, col_dl2 = st.columns(2)
+                        
+                        with col_dl1:
+                            st.download_button(
+                                label="📊 Télécharger Excel",
+                                data=output.getvalue(),
+                                file_name=f"import_compta_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
+                                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                                use_container_width=True
+                            )
+                        
+                        with col_dl2:
+                            csv_data = df.to_csv(index=False, sep=';', encoding='utf-8-sig')
+                            st.download_button(
+                                label="📄 Télécharger CSV",
+                                data=csv_data,
+                                file_name=f"import_compta_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
+                                mime="text/csv",
+                                use_container_width=True
+                            )
+                    
+                    else:
+                        st.markdown("""
+                            <div class="warning-box">
+                                <strong>⚠️ Aucune donnée extraite</strong><br>
+                                Le PDF ne semble pas contenir de tableau structuré.<br>
+                                Essayez d'augmenter la résolution OCR dans les paramètres.
+                            </div>
+                        """, unsafe_allow_html=True)
+                
+                except Exception as e:
+                    st.markdown(f"""
+                        <div class="error-box">
+                            <strong>❌ Erreur lors du traitement</strong><br>
+                            {str(e)}
+                        </div>
+                    """, unsafe_allow_html=True)
+                    
+                    with st.expander("🔍 Détails de l'erreur"):
+                        st.code(str(e), language="text")
+                        st.info("""
+                        **Solutions possibles :**
+                        1. Vérifiez que le PDF n'est pas protégé par mot de passe
+                        2. Assurez-vous que le PDF contient des tableaux
+                        3. Essayez avec un PDF différent
+                        4. Augmentez la résolution OCR dans les paramètres
+                        """)
 
 else:
-    # Message d'accueil
-    st.info("👆 **Commencez par uploader un fichier PDF de relevé notaire**")
+    # Page d'accueil
+    st.markdown("### 🎯 Comment ça marche ?")
     
-    # Instructions d'utilisation
-    with st.expander("📖 Mode d'emploi"):
+    col1, col2, col3 = st.columns(3)
+    
+    with col1:
         st.markdown("""
-        ### Comment utiliser cet outil ?
-        
-        1. **Upload** : Cliquez sur "Browse files" et sélectionnez votre PDF
-        2. **Traitement** : L'application analyse automatiquement le document
-        3. **Vérification** : Consultez l'aperçu des données extraites
-        4. **Export** : Téléchargez le fichier Excel généré
-        
-        ### Format attendu
-        
-        Le PDF doit contenir un tableau avec :
-        - Une colonne **Date**
-        - Un **Libellé** de l'opération
-        - Des colonnes **Débit** et **Crédit**
-        
-        ### Formats supportés
-        
-        - ✅ PDF avec tableaux natifs (meilleure qualité)
-        - ✅ PDF scannés (via OCR automatique)
-        - ❌ PDF protégés par mot de passe
+        **1️⃣ Chargement**
+        - Glissez votre PDF
+        - Max 50 MB
+        - Format PDF uniquement
         """)
     
-    # Exemple visuel
-    with st.expander("👁️ Exemple de résultat"):
-        exemple_data = {
-            "Date": ["01/01/2024", "02/01/2024", "03/01/2024"],
-            "Piece": ["001", "002", "003"],
-            "Compte": ["512000", "512000", "401000"],
-            "Libelle": ["Honoraires notaire", "Frais de dossier", "Taxe foncière"],
-            "Debit": ["1500.00", "250.00", ""],
-            "Credit": ["", "", "850.00"]
+    with col2:
+        st.markdown("""
+        **2️⃣ Extraction**
+        - Détection automatique
+        - Tables natives ou OCR
+        - Formatage intelligent
+        """)
+    
+    with col3:
+        st.markdown("""
+        **3️⃣ Export**
+        - Téléchargement Excel
+        - Option CSV disponible
+        - Prêt pour import compta
+        """)
+    
+    st.markdown("---")
+    
+    # Exemple de données
+    st.markdown("### 📋 Exemple de résultat")
+    
+    exemple_data = {
+        'Date': ['01/01/2024', '02/01/2024', '03/01/2024'],
+        'Piece': ['VIR001', 'CHQ002', 'VIR003'],
+        'Compte': ['512000', '401000', '445660'],
+        'Libelle': ['Virement client DUPONT', 'Chèque fournisseur MARTIN', 'TVA déductible'],
+        'Debit': [1000.00, 0.00, 200.00],
+        'Credit': [0.00, 500.00, 0.00]
+    }
+    
+    df_exemple = pd.DataFrame(exemple_data)
+    
+    st.dataframe(
+        df_exemple,
+        use_container_width=True,
+        column_config={
+            "Date": st.column_config.TextColumn("Date", width="small"),
+            "Piece": st.column_config.TextColumn("Pièce", width="small"),
+            "Compte": st.column_config.TextColumn("Compte", width="small"),
+            "Libelle": st.column_config.TextColumn("Libellé", width="large"),
+            "Debit": st.column_config.NumberColumn("Débit", format="%.2f"),
+            "Credit": st.column_config.NumberColumn("Crédit", format="%.2f")
         }
-        st.dataframe(pd.DataFrame(exemple_data), use_container_width=True)
+    )
 
-# Footer
-st.divider()
-st.caption("© 2024 ONLY COMPTA - Tous droits réservés | Développé avec ❤️ et Streamlit")
+# Pied de page
+st.markdown("""
+    <div class="footer">
+        ⚖️ <strong>ONLY COMPTA</strong> - OCR Notaires<br>
+        Solution d'extraction automatique de relevés comptables
+    </div>
+""", unsafe_allow_html=True)

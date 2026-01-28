@@ -3,7 +3,7 @@
     pkgs.python310
     pkgs.python310Packages.pip
     pkgs.libGL
-    pkgs.libglib
+    pkgs.glib
     pkgs.libglvnd
   ];
 }
