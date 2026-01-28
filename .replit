@@ -1,7 +1,7 @@
 run = "streamlit run main.py --server.headless true --server.port 8080 --server.address 0.0.0.0"
 
 [nix]
-channel = "stable-23_11"
+channel = "stable-24_05"
 
 [env]
 PYTHONPATH = "${REPL_HOME}"

@@ -13,11 +13,10 @@ class PDFProcessor:
         
         Args:
             max_pages: Nombre maximum de pages à traiter
-            ocr_resolution: Résolution pour l'OCR (150, 200, ou 300 DPI)
+            ocr_resolution: Résolution pour l'extraction (non utilisé sans OCR)
         """
         self.max_pages = max_pages
         self.ocr_resolution = ocr_resolution
-        self.easyocr_reader = None  # Lazy loading
     
     def _detecter_date(self, texte: str) -> bool:
         """
@@ -188,49 +187,6 @@ class PDFProcessor:
         
         return all_data
     
-    def _extraire_avec_ocr(self, page) -> List[List[str]]:
-        """
-        Extrait le texte avec OCR si les tables natives ne fonctionnent pas
-        
-        Args:
-            page: Page pdfplumber
-            
-        Returns:
-            Liste de lignes (listes de cellules)
-        """
-        # Lazy loading d'EasyOCR
-        if self.easyocr_reader is None:
-            try:
-                import easyocr
-                self.easyocr_reader = easyocr.Reader(['fr'], gpu=False)
-            except ImportError:
-                # Si EasyOCR n'est pas installé, utiliser extraction texte simple
-                return self._extraire_texte_simple(page)
-        
-        # Convertir la page en image
-        img = page.to_image(resolution=self.ocr_resolution)
-        
-        # OCR
-        results = self.easyocr_reader.readtext(img.original)
-        
-        # Grouper les résultats par ligne (basé sur coordonnée Y)
-        lines = {}
-        for (bbox, text, conf) in results:
-            y = int(bbox[0][1])  # Coordonnée Y
-            if y not in lines:
-                lines[y] = []
-            lines[y].append((bbox[0][0], text))  # (X, texte)
-        
-        # Trier et formater
-        all_data = []
-        for y in sorted(lines.keys()):
-            # Trier par X
-            line_items = sorted(lines[y], key=lambda x: x[0])
-            line_text = [item[1] for item in line_items]
-            all_data.append(line_text)
-        
-        return all_data
-    
     def _extraire_texte_simple(self, page) -> List[List[str]]:
         """
         Extraction texte simple comme fallback
@@ -278,11 +234,11 @@ class PDFProcessor:
                 # Essayer d'abord l'extraction native
                 page_data = self._extraire_table_native(page)
                 
-                # Si pas de données, essayer OCR sur la première page
+                # Si pas de données, essayer extraction texte simple sur la première page
                 if not page_data and i == 0:
-                    page_data = self._extraire_avec_ocr(page)
+                    page_data = self._extraire_texte_simple(page)
                     if page_data:
-                        method_used = "OCR"
+                        method_used = "Extraction texte"
                 
                 all_data.extend(page_data)
         

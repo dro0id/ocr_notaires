@@ -1,7 +1,7 @@
 { pkgs }: {
   deps = [
-    pkgs.python310
-    pkgs.python310Packages.pip
+    pkgs.python311
+    pkgs.python311Packages.pip
     pkgs.libGL
     pkgs.glib
     pkgs.libglvnd
