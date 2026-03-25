@@ -104,7 +104,7 @@ if uploaded_file is not None:
             </div>
         """, unsafe_allow_html=True)
 
-        if st.button("🚀 Lancer l'extraction", type="primary", use_container_width=True):
+        if st.button("🚀 Lancer l'extraction", type="primary", width='stretch'):
             with st.spinner("🔄 Traitement en cours..."):
                 try:
                     processor = PDFProcessor(
@@ -164,7 +164,7 @@ if uploaded_file is not None:
 
                         st.dataframe(
                             df_filtered,
-                            use_container_width=True,
+                            width='stretch',
                             column_config={
                                 "Date": st.column_config.TextColumn("Date", width="small"),
                                 "Piece": st.column_config.TextColumn("Pièce", width="small"),
@@ -198,7 +198,7 @@ if uploaded_file is not None:
                                 data=output.getvalue(),
                                 file_name=f"import_compta_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
                                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                                use_container_width=True
+                                width='stretch'
                             )
                         with col_dl2:
                             csv_data = df.to_csv(index=False, sep=';', encoding='utf-8-sig')
@@ -207,7 +207,7 @@ if uploaded_file is not None:
                                 data=csv_data,
                                 file_name=f"import_compta_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
                                 mime="text/csv",
-                                use_container_width=True
+                                width='stretch'
                             )
                     else:
                         st.markdown("""
@@ -248,7 +248,7 @@ else:
         'Debit': [1000.00, 0.00, 200.00],
         'Credit': [0.00, 500.00, 0.00]
     }
-    st.dataframe(pd.DataFrame(exemple_data), use_container_width=True)
+    st.dataframe(pd.DataFrame(exemple_data), width='stretch')
 
 st.markdown("""
     <div class="footer">
