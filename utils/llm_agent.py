@@ -8,12 +8,16 @@ from typing import Optional, List
 class LLMAgent:
     """Agent LLM pour identifier les colonnes d un releve notaire"""
 
+    # Modèles tentés dans l'ordre (du plus récent au plus ancien)
+    MODELS = [
+        "gemini-2.5-flash",
+        "gemini-2.0-flash-lite",
+        "gemini-2.0-flash",
+    ]
+    BASE_URL = "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={key}"
+
     def __init__(self, api_key: str):
         self.api_key = api_key
-        self.url = (
-            "https://generativelanguage.googleapis.com/v1beta"
-            "/models/gemini-2.0-flash-lite:generateContent?key=" + api_key
-        )
         self.last_error = None
 
     def identifier_colonnes(self, tableau_brut: list, headers: List[str] = None) -> Optional[dict]:
@@ -55,14 +59,30 @@ class LLMAgent:
             "contents": [{"parts": [{"text": prompt}]}]
         }).encode("utf-8")
 
-        # Retry avec backoff exponentiel pour les rate limits (429)
+        # Essayer chaque modèle dans l'ordre
+        for model in self.MODELS:
+            url = self.BASE_URL.format(model=model, key=self.api_key)
+            if self._appeler_api(url, data):
+                return self._resultat
+            # Si 404 (modèle indisponible), passer au suivant
+            if self._dernier_code == 404:
+                continue
+            # Autre erreur → arrêter
+            return None
+
+        return None
+
+    def _appeler_api(self, url: str, data: bytes) -> bool:
+        """Tente l'appel API avec retry sur 429. Retourne True si succès."""
+        self._resultat = None
+        self._dernier_code = None
         delays = [2, 5, 10]
         for attempt, delay in enumerate([0] + delays):
             if delay:
                 time.sleep(delay)
             try:
                 req = urllib.request.Request(
-                    self.url,
+                    url,
                     data=data,
                     headers={"Content-Type": "application/json"}
                 )
@@ -73,29 +93,29 @@ class LLMAgent:
                     colonnes = json.loads(texte_clean)
                     cles_attendues = {"date", "libelle", "debit", "credit"}
                     if isinstance(colonnes, dict) and cles_attendues.issubset(colonnes.keys()):
-                        return colonnes
+                        self._resultat = colonnes
+                        return True
                     self.last_error = f"Réponse JSON invalide : {texte_clean}"
-                    return None
+                    return False
 
             except urllib.error.HTTPError as e:
                 body = e.read().decode("utf-8", errors="ignore")
+                self._dernier_code = e.code
                 if e.code == 429 and attempt < len(delays):
-                    # Rate limit → on réessaie
                     continue
-                # Extraire le message Google si disponible
                 try:
                     api_msg = json.loads(body).get("error", {}).get("message", body[:300])
                 except Exception:
                     api_msg = body[:300]
                 self.last_error = f"Erreur HTTP {e.code} : {api_msg}"
-                return None
+                return False
 
             except urllib.error.URLError as e:
                 self.last_error = f"Erreur réseau : {e.reason}"
-                return None
+                return False
 
             except Exception as e:
                 self.last_error = f"Erreur inattendue : {e}"
-                return None
+                return False
 
-        return None
+        return False
