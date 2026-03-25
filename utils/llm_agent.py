@@ -1,5 +1,6 @@
 import urllib.request
 import urllib.error
+import base64
 import json
 import re
 import time
@@ -119,3 +120,47 @@ class LLMAgent:
                 return False
 
         return False
+
+    def ocr_page(self, image_bytes: bytes) -> List[List[str]]:
+        """OCR une page scannée via Gemini Vision. Retourne liste de lignes."""
+        image_b64 = base64.b64encode(image_bytes).decode("utf-8")
+
+        prompt = (
+            "Cette image est une page d'un relevé bancaire notarial français.\n"
+            "Extrais toutes les lignes du tableau visible.\n"
+            "Retourne UNIQUEMENT un JSON valide : liste de listes de strings.\n"
+            "Inclus la ligne d'en-tête en premier.\n"
+            'Exemple : [["Date","Libellé","Débit","Crédit"],["01/01/2024","Virement","100",""]]\n'
+            "Si aucun tableau visible, retourne []."
+        )
+
+        data = json.dumps({
+            "contents": [{
+                "parts": [
+                    {"inline_data": {"mime_type": "image/png", "data": image_b64}},
+                    {"text": prompt}
+                ]
+            }]
+        }).encode("utf-8")
+
+        for model in self.MODELS:
+            url = self.BASE_URL.format(model=model, key=self.api_key)
+            try:
+                req = urllib.request.Request(
+                    url, data=data,
+                    headers={"Content-Type": "application/json"}
+                )
+                with urllib.request.urlopen(req, timeout=30) as response:
+                    result = json.loads(response.read())
+                    texte = result["candidates"][0]["content"]["parts"][0]["text"]
+                    texte_clean = re.sub(r"```json|```", "", texte).strip()
+                    rows = json.loads(texte_clean)
+                    if isinstance(rows, list):
+                        return [[str(c) for c in row] for row in rows if row]
+            except urllib.error.HTTPError as e:
+                if e.code == 404:
+                    continue
+            except Exception:
+                pass
+
+        return []
