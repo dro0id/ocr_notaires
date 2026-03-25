@@ -1,3 +1,4 @@
+import io
 import pdfplumber
 import pandas as pd
 import re
@@ -206,17 +207,37 @@ class PDFProcessor:
                 all_data.append(cells)
         return all_data
 
+    def _page_en_image(self, fitz_doc, page_index: int) -> bytes:
+        """Convertit une page PDF en PNG via PyMuPDF."""
+        page = fitz_doc[page_index]
+        mat = __import__('fitz').Matrix(self.ocr_resolution / 72, self.ocr_resolution / 72)
+        pix = page.get_pixmap(matrix=mat)
+        return pix.tobytes("png")
+
     def process_pdf(self, pdf_file) -> Tuple[pd.DataFrame, Dict]:
         start_time = time.time()
         all_data = []
         all_headers = []
         method_used = "Tableaux natifs"
         llm_used = False
+        ocr_used = False
 
-        with pdfplumber.open(pdf_file) as pdf:
+        # Lire les bytes une seule fois pour pdfplumber + fitz
+        pdf_bytes = pdf_file.read() if hasattr(pdf_file, 'read') else pdf_file.getvalue()
+
+        # Ouvrir PyMuPDF si disponible (pour OCR des pages scannées)
+        fitz_doc = None
+        if self._agent:
+            try:
+                import fitz
+                fitz_doc = fitz.open(stream=pdf_bytes, filetype="pdf")
+            except ImportError:
+                pass
+
+        with pdfplumber.open(io.BytesIO(pdf_bytes)) as pdf:
             pages_to_process = min(len(pdf.pages), self.max_pages)
 
-            for page in pdf.pages[:pages_to_process]:
+            for i, page in enumerate(pdf.pages[:pages_to_process]):
                 headers, page_data = self._extraire_table_native(page)
 
                 # Garder les en-têtes de la première table trouvée
@@ -229,17 +250,39 @@ class PDFProcessor:
                     if page_data and method_used == "Tableaux natifs":
                         method_used = "Extraction texte"
 
+                # Fallback OCR vision (Gemini) pour les pages scannées sans texte
+                if not page_data and fitz_doc:
+                    try:
+                        img_bytes = self._page_en_image(fitz_doc, i)
+                        page_data = self._agent.ocr_page(img_bytes)
+                        if page_data:
+                            # Première ligne = en-têtes si pas encore trouvés
+                            if not all_headers and page_data:
+                                all_headers = page_data[0]
+                                page_data = page_data[1:]
+                            ocr_used = True
+                    except Exception:
+                        pass
+
                 all_data.extend(page_data)
+
+        if fitz_doc:
+            fitz_doc.close()
 
         # Détection LLM avec en-têtes + premières lignes
         self._colonnes_detectees = None
         llm_error = None
+        if ocr_used:
+            method_used = "OCR Vision (Gemini)"
         if self._agent and all_data:
             colonnes = self._agent.identifier_colonnes(all_data, all_headers)
             if colonnes:
                 self._colonnes_detectees = colonnes
                 llm_used = True
-                method_used = "Agent LLM (Gemini)"
+                if ocr_used:
+                    method_used = "OCR + Agent LLM (Gemini)"
+                else:
+                    method_used = "Agent LLM (Gemini)"
             else:
                 llm_error = getattr(self._agent, 'last_error', None)
 
