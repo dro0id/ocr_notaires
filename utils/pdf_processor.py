@@ -259,17 +259,30 @@ class PDFProcessor:
                     if page_data and method_used == "Tableaux natifs":
                         method_used = "Extraction texte"
 
-                # Fallback OCR vision (Gemini) pour les pages scannées sans texte
-                if not page_data:
+                # Vérifier si les données extraites sont réellement utiles
+                # (contiennent des dates ou des montants reconnaissables)
+                data_utile = any(
+                    any(
+                        self._detecter_date(str(cell)) or bool(self._nettoyer_montant(str(cell)))
+                        for cell in row if cell
+                    )
+                    for row in page_data
+                ) if page_data else False
+
+                # Si pas de données utiles → page scannée ou extraction garbage
+                if not data_utile:
                     pages_scannees += 1
+                    page_data = []  # ignorer les données garbage
                     if fitz_doc:
                         try:
                             img_bytes = self._page_en_image(fitz_doc, i)
-                            page_data = self._agent.ocr_page(img_bytes)
-                            if page_data:
-                                if not all_headers and len(page_data) > 1:
-                                    all_headers = page_data[0]
-                                    page_data = page_data[1:]
+                            ocr_data = self._agent.ocr_page(img_bytes)
+                            if ocr_data:
+                                if not all_headers and len(ocr_data) > 1:
+                                    all_headers = ocr_data[0]
+                                    page_data = ocr_data[1:]
+                                else:
+                                    page_data = ocr_data
                                 ocr_used = True
                         except Exception as e:
                             ocr_error = f"Erreur OCR page {i+1} : {e}"
