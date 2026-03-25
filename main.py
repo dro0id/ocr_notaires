@@ -210,13 +210,22 @@ if uploaded_file is not None:
                                 width='stretch'
                             )
                     else:
-                        st.markdown("""
-                            <div class="warning-box">
-                                <strong>⚠️ Aucune donnée extraite</strong><br>
-                                Le PDF ne semble pas contenir de tableau structuré.<br>
-                                Essayez d'augmenter la résolution OCR dans les paramètres.
-                            </div>
-                        """, unsafe_allow_html=True)
+                        ocr_err = stats.get('ocr_error')
+                        if ocr_err:
+                            st.markdown(f"""
+                                <div class="warning-box">
+                                    <strong>⚠️ PDF scanné — OCR requis</strong><br>
+                                    {ocr_err}
+                                </div>
+                            """, unsafe_allow_html=True)
+                        else:
+                            st.markdown("""
+                                <div class="warning-box">
+                                    <strong>⚠️ Aucune donnée extraite</strong><br>
+                                    Le PDF ne semble pas contenir de tableau structuré.<br>
+                                    Essayez d'augmenter la résolution OCR dans les paramètres.
+                                </div>
+                            """, unsafe_allow_html=True)
 
                 except Exception as e:
                     st.markdown(f"""

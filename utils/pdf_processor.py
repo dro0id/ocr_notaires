@@ -209,8 +209,9 @@ class PDFProcessor:
 
     def _page_en_image(self, fitz_doc, page_index: int) -> bytes:
         """Convertit une page PDF en PNG via PyMuPDF."""
+        import fitz
         page = fitz_doc[page_index]
-        mat = __import__('fitz').Matrix(self.ocr_resolution / 72, self.ocr_resolution / 72)
+        mat = fitz.Matrix(self.ocr_resolution / 72, self.ocr_resolution / 72)
         pix = page.get_pixmap(matrix=mat)
         return pix.tobytes("png")
 
@@ -221,53 +222,75 @@ class PDFProcessor:
         method_used = "Tableaux natifs"
         llm_used = False
         ocr_used = False
+        ocr_error = None
+        fitz_available = False
 
         # Lire les bytes une seule fois pour pdfplumber + fitz
         pdf_bytes = pdf_file.read() if hasattr(pdf_file, 'read') else pdf_file.getvalue()
 
-        # Ouvrir PyMuPDF si disponible (pour OCR des pages scannées)
+        # Vérifier si PyMuPDF est disponible
+        try:
+            import fitz
+            fitz_available = True
+        except ImportError:
+            fitz_available = False
+
+        # Ouvrir PyMuPDF si dispo + clé API présente
         fitz_doc = None
-        if self._agent:
+        if self._agent and fitz_available:
             try:
                 import fitz
                 fitz_doc = fitz.open(stream=pdf_bytes, filetype="pdf")
-            except ImportError:
-                pass
+            except Exception as e:
+                ocr_error = f"Erreur ouverture PyMuPDF : {e}"
 
         with pdfplumber.open(io.BytesIO(pdf_bytes)) as pdf:
             pages_to_process = min(len(pdf.pages), self.max_pages)
+            pages_scannees = 0
 
             for i, page in enumerate(pdf.pages[:pages_to_process]):
                 headers, page_data = self._extraire_table_native(page)
 
-                # Garder les en-têtes de la première table trouvée
                 if headers and not all_headers:
                     all_headers = headers
 
-                # Fallback texte pour TOUTES les pages sans table native
                 if not page_data:
                     page_data = self._extraire_texte_simple(page)
                     if page_data and method_used == "Tableaux natifs":
                         method_used = "Extraction texte"
 
                 # Fallback OCR vision (Gemini) pour les pages scannées sans texte
-                if not page_data and fitz_doc:
-                    try:
-                        img_bytes = self._page_en_image(fitz_doc, i)
-                        page_data = self._agent.ocr_page(img_bytes)
-                        if page_data:
-                            # Première ligne = en-têtes si pas encore trouvés
-                            if not all_headers and page_data:
-                                all_headers = page_data[0]
-                                page_data = page_data[1:]
-                            ocr_used = True
-                    except Exception:
-                        pass
+                if not page_data:
+                    pages_scannees += 1
+                    if fitz_doc:
+                        try:
+                            img_bytes = self._page_en_image(fitz_doc, i)
+                            page_data = self._agent.ocr_page(img_bytes)
+                            if page_data:
+                                if not all_headers and len(page_data) > 1:
+                                    all_headers = page_data[0]
+                                    page_data = page_data[1:]
+                                ocr_used = True
+                        except Exception as e:
+                            ocr_error = f"Erreur OCR page {i+1} : {e}"
 
                 all_data.extend(page_data)
 
         if fitz_doc:
             fitz_doc.close()
+
+        # Si pages scannées détectées mais pas d'OCR possible → expliquer pourquoi
+        if pages_scannees > 0 and not ocr_used and not ocr_error:
+            if not self._agent:
+                ocr_error = (
+                    f"PDF scanné détecté ({pages_scannees} page(s) sans texte). "
+                    "Ajoutez une clé API Gemini dans la sidebar pour activer l'OCR automatique."
+                )
+            elif not fitz_available:
+                ocr_error = (
+                    f"PDF scanné détecté ({pages_scannees} page(s) sans texte). "
+                    "PyMuPDF non disponible — redéployez l'application pour installer les dépendances."
+                )
 
         # Détection LLM avec en-têtes + premières lignes
         self._colonnes_detectees = None
@@ -279,10 +302,7 @@ class PDFProcessor:
             if colonnes:
                 self._colonnes_detectees = colonnes
                 llm_used = True
-                if ocr_used:
-                    method_used = "OCR + Agent LLM (Gemini)"
-                else:
-                    method_used = "Agent LLM (Gemini)"
+                method_used = "OCR + Agent LLM (Gemini)" if ocr_used else "Agent LLM (Gemini)"
             else:
                 llm_error = getattr(self._agent, 'last_error', None)
 
@@ -295,7 +315,6 @@ class PDFProcessor:
 
         df = pd.DataFrame(formatted_data)
 
-        # Conversion des colonnes numériques
         if not df.empty:
             for col in ['Debit', 'Credit']:
                 if col in df.columns:
@@ -309,6 +328,7 @@ class PDFProcessor:
             'processing_time': processing_time,
             'llm_used': llm_used,
             'llm_error': llm_error,
+            'ocr_error': ocr_error,
             'colonnes_detectees': self._colonnes_detectees
         }
 
