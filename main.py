@@ -6,7 +6,7 @@ from utils.pdf_processor import PDFProcessor
 
 st.set_page_config(
     page_title="OCR Notaires - ONLY COMPTA",
-    page_icon="âï¸",
+    page_icon="⚖️",
     layout="wide",
     initial_sidebar_state="expanded"
 )
@@ -24,63 +24,63 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-st.markdown('<div class="main-header">âï¸ ONLY COMPTA - OCR Notaires</div>', unsafe_allow_html=True)
-st.markdown('<div class="sub-header">Convertissez vos relevÃ©s PDF en Ã©critures comptables Excel</div>', unsafe_allow_html=True)
+st.markdown('<div class="main-header">⚖️ ONLY COMPTA - OCR Notaires</div>', unsafe_allow_html=True)
+st.markdown('<div class="sub-header">Convertissez vos relevés PDF en écritures comptables Excel</div>', unsafe_allow_html=True)
 
 with st.sidebar:
-    st.header("â¹ï¸ Informations")
+    st.header("ℹ️ Informations")
     st.info("""
     **Format de sortie :**
     - Date
     - Piece
     - Compte
-    - LibellÃ©
-    - DÃ©bit
-    - CrÃ©dit
+    - Libellé
+    - Débit
+    - Crédit
 
     **Limites :**
     - Taille max : 50 MB
-    - Pages par dÃ©faut : 30
+    - Pages par défaut : 30
     - Format : PDF uniquement
     """)
 
-    st.header("âï¸ ParamÃ¨tres")
+    st.header("⚙️ Paramètres")
     max_pages = st.number_input(
-        "Pages maximum Ã  traiter",
+        "Pages maximum à traiter",
         min_value=1, max_value=100, value=30,
-        help="Limite le nombre de pages pour accÃ©lÃ©rer le traitement"
+        help="Limite le nombre de pages pour accélérer le traitement"
     )
     ocr_resolution = st.selectbox(
-        "RÃ©solution OCR (si nÃ©cessaire)",
+        "Résolution OCR (si nécessaire)",
         options=[150, 200, 300], index=1,
-        help="Plus Ã©levÃ© = meilleure qualitÃ© mais plus lent"
+        help="Plus élevé = meilleure qualité mais plus lent"
     )
 
-    st.header("ð¤ Agent IA")
+    st.header("🤖 Agent IA")
     st.markdown("""
-    L'agent IA (Gemini) identifie automatiquement les colonnes de chaque relevÃ©,
-    mÃªme si leur ordre ou leur nom varie d'un notaire Ã  l'autre.
+    L'agent IA (Gemini) identifie automatiquement les colonnes de chaque relevé,
+    même si leur ordre ou leur nom varie d'un notaire à l'autre.
 
-    **Sans clÃ©** : extraction classique (colonnes fixes)
-    **Avec clÃ©** : extraction intelligente (colonnes adaptatives)
+    **Sans clé** : extraction classique (colonnes fixes)
+    **Avec clé** : extraction intelligente (colonnes adaptatives)
 
-    Obtenez une clÃ© gratuite sur [Google AI Studio](https://aistudio.google.com/app/apikey).
+    Obtenez une clé gratuite sur [Google AI Studio](https://aistudio.google.com/app/apikey).
     """)
 
     gemini_key = st.text_input(
-        "ClÃ© API Gemini (optionnel)",
+        "Clé API Gemini (optionnel)",
         type="password",
         placeholder="AIza...",
         help="Laissez vide pour utiliser l'extraction classique"
     )
 
-    # PrioritÃ© : champ sidebar > secrets Replit
+    # Priorité : champ sidebar > secrets Replit
     api_key = gemini_key.strip() if gemini_key.strip() else st.secrets.get("GEMINI_API_KEY", None)
 
 uploaded_file = st.file_uploader(
-    "ð SÃ©lectionnez votre relevÃ© PDF",
+    "📄 Sélectionnez votre relevé PDF",
     type=["pdf"],
-    help="Glissez-dÃ©posez votre fichier ou cliquez pour parcourir"
+    help="Glissez-déposez votre fichier ou cliquez pour parcourir"
 )
 
 if uploaded_file is not None:
@@ -89,20 +89,20 @@ if uploaded_file is not None:
     if file_size > 50:
         st.markdown(f"""
             <div class="error-box">
-                <strong>â ï¸ Fichier trop volumineux</strong><br>
-                Taille actuelle: {file_size:.1f} MB â Limite: 50 MB
+                <strong>⚠️ Fichier trop volumineux</strong><br>
+                Taille actuelle: {file_size:.1f} MB — Limite: 50 MB
             </div>
         """, unsafe_allow_html=True)
     else:
         st.markdown(f"""
             <div class="success-box">
-                <strong>â Fichier chargÃ©</strong><br>
-                Nom: {uploaded_file.name} â Taille: {file_size:.2f} MB
+                <strong>✅ Fichier chargé</strong><br>
+                Nom: {uploaded_file.name} — Taille: {file_size:.2f} MB
             </div>
         """, unsafe_allow_html=True)
 
-        if st.button("ð Lancer l'extraction", type="primary", use_container_width=True):
-            with st.spinner("ð Traitement en cours..."):
+        if st.button("🚀 Lancer l'extraction", type="primary", use_container_width=True):
+            with st.spinner("🔄 Traitement en cours..."):
                 try:
                     processor = PDFProcessor(
                         max_pages=max_pages,
@@ -112,39 +112,39 @@ if uploaded_file is not None:
 
                     df, stats = processor.process_pdf(uploaded_file)
 
-                    # Afficher infos LLM si utilisÃ©
+                    # Afficher infos LLM si utilisé
                     if stats.get('llm_used'):
                         colonnes = stats.get('colonnes_detectees', {})
                         st.markdown(f"""
                             <div class="llm-box">
-                                <strong>ð¤ Agent IA activÃ©</strong><br>
-                                Colonnes dÃ©tectÃ©es automatiquement :
-                                date â col {colonnes.get('date', '?')} |
-                                libellÃ© â col {colonnes.get('libelle', '?')} |
-                                dÃ©bit â col {colonnes.get('debit', '?')} |
-                                crÃ©dit â col {colonnes.get('credit', '?')}
+                                <strong>🤖 Agent IA activé</strong><br>
+                                Colonnes détectées automatiquement :
+                                date → col {colonnes.get('date', '?')} |
+                                libellé → col {colonnes.get('libelle', '?')} |
+                                débit → col {colonnes.get('debit', '?')} |
+                                crédit → col {colonnes.get('credit', '?')}
                             </div>
                         """, unsafe_allow_html=True)
 
-                    st.markdown("### ð RÃ©sultats")
+                    st.markdown("### 📊 Résultats")
                     col1, col2, col3, col4 = st.columns(4)
                     with col1:
-                        st.metric("Pages traitÃ©es", stats['pages_processed'])
+                        st.metric("Pages traitées", stats['pages_processed'])
                     with col2:
                         st.metric("Lignes extraites", stats['lines_extracted'])
                     with col3:
-                        st.metric("MÃ©thode", stats['method'])
+                        st.metric("Méthode", stats['method'])
                     with col4:
                         st.metric("Temps", f"{stats['processing_time']:.1f}s")
 
                     if len(df) > 0:
-                        st.markdown("### ðï¸ AperÃ§u des donnÃ©es")
+                        st.markdown("### 👁️ Aperçu des données")
 
                         col_filter1, col_filter2 = st.columns(2)
                         with col_filter1:
-                            filter_date = st.text_input("ð Filtrer par date", placeholder="Ex: 01/01/2024")
+                            filter_date = st.text_input("🔍 Filtrer par date", placeholder="Ex: 01/01/2024")
                         with col_filter2:
-                            filter_libelle = st.text_input("ð Filtrer par libellÃ©", placeholder="Ex: virement")
+                            filter_libelle = st.text_input("🔍 Filtrer par libellé", placeholder="Ex: virement")
 
                         df_filtered = df.copy()
                         if filter_date:
@@ -157,17 +157,17 @@ if uploaded_file is not None:
                             use_container_width=True,
                             column_config={
                                 "Date": st.column_config.TextColumn("Date", width="small"),
-                                "Piece": st.column_config.TextColumn("PiÃ¨ce", width="small"),
+                                "Piece": st.column_config.TextColumn("Pièce", width="small"),
                                 "Compte": st.column_config.TextColumn("Compte", width="small"),
-                                "Libelle": st.column_config.TextColumn("LibellÃ©", width="large"),
-                                "Debit": st.column_config.NumberColumn("DÃ©bit", format="%.2f"),
-                                "Credit": st.column_config.NumberColumn("CrÃ©dit", format="%.2f")
+                                "Libelle": st.column_config.TextColumn("Libellé", width="large"),
+                                "Debit": st.column_config.NumberColumn("Débit", format="%.2f"),
+                                "Credit": st.column_config.NumberColumn("Crédit", format="%.2f")
                             }
                         )
 
-                        st.info(f"ð Affichage de {len(df_filtered)} lignes sur {len(df)} au total")
+                        st.info(f"📌 Affichage de {len(df_filtered)} lignes sur {len(df)} au total")
 
-                        st.markdown("### ð¥ TÃ©lÃ©chargement")
+                        st.markdown("### 📥 Téléchargement")
 
                         output = io.BytesIO()
                         with pd.ExcelWriter(output, engine='openpyxl') as writer:
@@ -184,7 +184,7 @@ if uploaded_file is not None:
                         col_dl1, col_dl2 = st.columns(2)
                         with col_dl1:
                             st.download_button(
-                                label="ð TÃ©lÃ©charger Excel",
+                                label="📊 Télécharger Excel",
                                 data=output.getvalue(),
                                 file_name=f"import_compta_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
                                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -193,7 +193,7 @@ if uploaded_file is not None:
                         with col_dl2:
                             csv_data = df.to_csv(index=False, sep=';', encoding='utf-8-sig')
                             st.download_button(
-                                label="ð TÃ©lÃ©charger CSV",
+                                label="📄 Télécharger CSV",
                                 data=csv_data,
                                 file_name=f"import_compta_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
                                 mime="text/csv",
@@ -202,34 +202,34 @@ if uploaded_file is not None:
                     else:
                         st.markdown("""
                             <div class="warning-box">
-                                <strong>â ï¸ Aucune donnÃ©e extraite</strong><br>
-                                Le PDF ne semble pas contenir de tableau structurÃ©.<br>
-                                Essayez d'augmenter la rÃ©solution OCR dans les paramÃ¨tres.
+                                <strong>⚠️ Aucune donnée extraite</strong><br>
+                                Le PDF ne semble pas contenir de tableau structuré.<br>
+                                Essayez d'augmenter la résolution OCR dans les paramètres.
                             </div>
                         """, unsafe_allow_html=True)
 
                 except Exception as e:
                     st.markdown(f"""
                         <div class="error-box">
-                            <strong>â Erreur lors du traitement</strong><br>
+                            <strong>❌ Erreur lors du traitement</strong><br>
                             {str(e)}
                         </div>
                     """, unsafe_allow_html=True)
-                    with st.expander("ð DÃ©tails de l'erreur"):
+                    with st.expander("🔍 Détails de l'erreur"):
                         st.code(str(e), language="text")
 
 else:
-    st.markdown("### ð¯ Comment Ã§a marche ?")
+    st.markdown("### 🎯 Comment ça marche ?")
     col1, col2, col3 = st.columns(3)
     with col1:
-        st.markdown("**1ï¸â£ Chargement**\n- Glissez votre PDF\n- Max 50 MB\n- Format PDF uniquement")
+        st.markdown("**1️⃣ Chargement**\n- Glissez votre PDF\n- Max 50 MB\n- Format PDF uniquement")
     with col2:
-        st.markdown("**2ï¸â£ Extraction**\n- DÃ©tection automatique\n- Agent IA si clÃ© fournie\n- Formatage intelligent")
+        st.markdown("**2️⃣ Extraction**\n- Détection automatique\n- Agent IA si clé fournie\n- Formatage intelligent")
     with col3:
-        st.markdown("**3ï¸â£ Export**\n- TÃ©lÃ©chargement Excel\n- Option CSV disponible\n- PrÃªt pour import compta")
+        st.markdown("**3️⃣ Export**\n- Téléchargement Excel\n- Option CSV disponible\n- Prêt pour import compta")
 
     st.markdown("---")
-    st.markdown("### ð Exemple de rÃ©sultat")
+    st.markdown("### 📋 Exemple de résultat")
     exemple_data = {
         'Date': ['01/01/2024', '02/01/2024', '03/01/2024'],
         'Piece': ['VIR001', 'CHQ002', 'VIR003'],
@@ -242,7 +242,7 @@ else:
 
 st.markdown("""
     <div class="footer">
-        âï¸ <strong>ONLY COMPTA</strong> - OCR Notaires<br>
-        Solution d'extraction automatique de relevÃ©s comptables
+        ⚖️ <strong>ONLY COMPTA</strong> - OCR Notaires<br>
+        Solution d'extraction automatique de relevés comptables
     </div>
 """, unsafe_allow_html=True)

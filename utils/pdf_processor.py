@@ -48,7 +48,7 @@ class PDFProcessor:
             return ""
         cleaned = texte.strip().replace(' ', '').replace('\xa0', '')
         cleaned = cleaned.replace(',', '.')
-        cleaned = re.sub(r'[â¬$Â£]', '', cleaned)
+        cleaned = re.sub(r'[€$£]', '', cleaned)
         try:
             float(cleaned)
             return cleaned
