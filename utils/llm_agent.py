@@ -1,7 +1,7 @@
 import urllib.request
 import json
 import re
-from typing import Optional
+from typing import Optional, List
 
 class LLMAgent:
     """Agent LLM pour identifier les colonnes d un releve notaire"""
@@ -14,31 +14,39 @@ class LLMAgent:
         )
         self.last_error = None
 
-    def identifier_colonnes(self, tableau_brut: list) -> Optional[dict]:
+    def identifier_colonnes(self, tableau_brut: list, headers: List[str] = None) -> Optional[dict]:
         self.last_error = None
         if not tableau_brut:
             return None
 
         lignes_texte = []
-        for ligne in tableau_brut[:5]:
+
+        # Inclure les en-têtes si disponibles (crucial pour identifier les colonnes)
+        if headers and any(headers):
+            lignes_texte.append("EN-TÊTES : " + " | ".join(headers))
+
+        # Inclure jusqu'à 10 premières lignes de données
+        for ligne in tableau_brut[:10]:
             lignes_texte.append(" | ".join([str(c).strip() if c else "" for c in ligne]))
 
         apercu = "\n".join(lignes_texte)
 
         prompt = (
-            "Tu es un comptable expert en releves bancaires notariaux.\n"
-            "Voici les premieres lignes d un releve notaire extrait d un PDF :\n\n"
+            "Tu es un comptable expert en relevés bancaires notariaux français.\n"
+            "Voici les premières lignes d'un relevé notaire extrait d'un PDF :\n\n"
             + apercu +
-            "\n\nIdentifie l index (0 = premiere colonne) de chaque type de donnee :\n"
-            "- date : la colonne contenant les dates\n"
-            "- libelle : la colonne contenant les descriptions / libelles\n"
-            "- debit : la colonne contenant les montants debits (sorties, positifs)\n"
-            "- credit : la colonne contenant les montants credits (entrees, parfois negatifs)\n\n"
-            "Regles importantes :\n"
-            "- Un montant negatif est un credit meme s il est dans une colonne non nommee credit\n"
-            "- Si une colonne n existe pas, mets null\n"
-            "- Reponds UNIQUEMENT en JSON valide, aucun texte avant ou apres\n\n"
-            'Exemple de reponse attendue : {"date": 0, "libelle": 1, "debit": 2, "credit": 3}'
+            "\n\nIdentifie l'index (0 = première colonne) de chaque type de donnée :\n"
+            "- date : colonne contenant les dates (ex: 01/01/2024, formats DD/MM/YYYY)\n"
+            "- libelle : colonne contenant les descriptions / libellés des opérations\n"
+            "- debit : colonne contenant les montants débits (sorties d'argent, valeurs positives)\n"
+            "- credit : colonne contenant les montants crédits (entrées d'argent)\n\n"
+            "Règles importantes :\n"
+            "- Les en-têtes de colonnes peuvent être en français : DEBIT, CREDIT, LIBELLE, DATE, MONTANT, etc.\n"
+            "- Un montant négatif dans la colonne débit = crédit\n"
+            "- Certains relevés n'ont qu'une colonne montant : mets debit=index et credit=null\n"
+            "- Si une colonne n'existe pas, mets null\n"
+            "- Réponds UNIQUEMENT en JSON valide, aucun texte avant ou après\n\n"
+            'Exemple de réponse : {"date": 0, "libelle": 2, "debit": 3, "credit": 4}'
         )
 
         try:
