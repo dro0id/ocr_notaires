@@ -75,7 +75,10 @@ with st.sidebar:
     )
 
     # Priorité : champ sidebar > secrets Replit
-    api_key = gemini_key.strip() if gemini_key.strip() else st.secrets.get("GEMINI_API_KEY", None)
+    try:
+        api_key = gemini_key.strip() if gemini_key.strip() else st.secrets.get("GEMINI_API_KEY", None)
+    except Exception:
+        api_key = gemini_key.strip() or None
 
 uploaded_file = st.file_uploader(
     "📄 Sélectionnez votre relevé PDF",
@@ -123,6 +126,13 @@ if uploaded_file is not None:
                                 libellé → col {colonnes.get('libelle', '?')} |
                                 débit → col {colonnes.get('debit', '?')} |
                                 crédit → col {colonnes.get('credit', '?')}
+                            </div>
+                        """, unsafe_allow_html=True)
+                    elif api_key and stats.get('llm_error'):
+                        st.markdown(f"""
+                            <div class="warning-box">
+                                <strong>⚠️ Agent IA non utilisé</strong><br>
+                                {stats['llm_error']}
                             </div>
                         """, unsafe_allow_html=True)
 

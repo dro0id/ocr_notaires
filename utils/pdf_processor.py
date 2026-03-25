@@ -8,19 +8,11 @@ class PDFProcessor:
     """Classe pour traiter les PDFs et extraire les donnees comptables"""
 
     def __init__(self, max_pages: int = 30, ocr_resolution: int = 200, api_key: str = None):
-        """
-        Initialise le processeur PDF
-
-        Args:
-            max_pages: Nombre maximum de pages a traiter
-            ocr_resolution: Resolution pour l extraction
-            api_key: Cle API Gemini (optionnel - fallback classique si absent)
-        """
         self.max_pages = max_pages
         self.ocr_resolution = ocr_resolution
-        self._colonnes_detectees = None  # Cache : detecte une seule fois par PDF
+        self._colonnes_detectees = None
+        self._headers = []
 
-        # Agent LLM optionnel
         self._agent = None
         if api_key:
             try:
@@ -44,11 +36,37 @@ class PDFProcessor:
         return False
 
     def _nettoyer_montant(self, texte: str) -> str:
+        """Nettoie un montant en gérant les formats français (1.234,56 ou 1 234,56)."""
         if not texte or not isinstance(texte, str):
             return ""
-        cleaned = texte.strip().replace(' ', '').replace('\xa0', '')
-        cleaned = cleaned.replace(',', '.')
-        cleaned = re.sub(r'[€$£]', '', cleaned)
+        cleaned = re.sub(r'[€$£\xa0]', '', texte).strip()
+        if not cleaned:
+            return ""
+
+        negative = cleaned.startswith('-')
+        if negative:
+            cleaned = cleaned[1:].strip()
+
+        # Format avec point ET virgule : le dernier est le séparateur décimal
+        if '.' in cleaned and ',' in cleaned:
+            last_dot = cleaned.rfind('.')
+            last_comma = cleaned.rfind(',')
+            if last_comma > last_dot:
+                # 1.234,56 → décimal = virgule
+                cleaned = cleaned.replace('.', '').replace(',', '.')
+            else:
+                # 1,234.56 → décimal = point
+                cleaned = cleaned.replace(',', '')
+        elif ',' in cleaned:
+            # Uniquement virgule → séparateur décimal (format français)
+            cleaned = cleaned.replace(',', '.')
+
+        # Supprimer espaces restants (séparateur milliers)
+        cleaned = cleaned.replace(' ', '')
+
+        if negative:
+            cleaned = '-' + cleaned
+
         try:
             float(cleaned)
             return cleaned
@@ -56,6 +74,7 @@ class PDFProcessor:
             return ""
 
     def _detecter_montants(self, ligne: List[str]) -> Tuple[str, str]:
+        """Détecte débit et crédit dans une ligne sans colonnes connues."""
         debit = ""
         credit = ""
         montants = []
@@ -64,18 +83,32 @@ class PDFProcessor:
                 cleaned = self._nettoyer_montant(cell)
                 if cleaned:
                     montants.append(cleaned)
+
         if len(montants) >= 2:
-            debit = montants[-2]
-            credit = montants[-1]
+            # Dernier montant non-nul = crédit, avant-dernier = débit
+            # Sauf si l'un est négatif
+            m1, m2 = montants[-2], montants[-1]
+            if float(m1) < 0:
+                credit = str(abs(float(m1)))
+            else:
+                debit = m1
+            if float(m2) < 0:
+                credit = str(abs(float(m2)))
+            else:
+                if not debit:
+                    debit = m2
+                else:
+                    credit = m2
         elif len(montants) == 1:
-            debit = montants[0]
+            val = float(montants[0])
+            if val < 0:
+                credit = str(abs(val))
+            else:
+                debit = montants[0]
         return debit, credit
 
     def _formater_avec_colonnes(self, ligne: List[str], colonnes: dict) -> Dict[str, str]:
-        """
-        Formate une ligne en utilisant les index detectes par le LLM.
-        Methode principale quand l agent a reussi.
-        """
+        """Formate une ligne en utilisant les index détectés par le LLM."""
         def get(index):
             if index is None:
                 return ""
@@ -88,13 +121,17 @@ class PDFProcessor:
         debit_raw = get(colonnes.get("debit"))
         credit_raw = get(colonnes.get("credit"))
 
-        # Regle metier : montant negatif = credit
         debit_clean = self._nettoyer_montant(debit_raw)
         credit_clean = self._nettoyer_montant(credit_raw)
 
+        # Montant négatif dans colonne débit = crédit
         if debit_clean and float(debit_clean) < 0:
             credit_clean = str(abs(float(debit_clean)))
             debit_clean = ""
+
+        # Montant négatif dans colonne crédit = valeur absolue
+        if credit_clean and float(credit_clean) < 0:
+            credit_clean = str(abs(float(credit_clean)))
 
         return {
             'Date':    get(colonnes.get("date")),
@@ -106,22 +143,12 @@ class PDFProcessor:
         }
 
     def _formater_ligne(self, ligne: List[str]) -> Dict[str, str]:
-        """
-        Formate une ligne brute.
-        Utilise les colonnes LLM si disponibles, sinon logique classique.
-        """
-        # --- Methode LLM (si colonnes detectees) ---
         if self._colonnes_detectees:
             return self._formater_avec_colonnes(ligne, self._colonnes_detectees)
 
-        # --- Methode classique (fallback) ---
         result = {
-            'Date': '',
-            'Piece': '',
-            'Compte': '',
-            'Libelle': '',
-            'Debit': '',
-            'Credit': ''
+            'Date': '', 'Piece': '', 'Compte': '',
+            'Libelle': '', 'Debit': '', 'Credit': ''
         }
 
         ligne_clean = [str(cell).strip() if cell else "" for cell in ligne]
@@ -150,64 +177,73 @@ class PDFProcessor:
 
         return result
 
-    def _extraire_table_native(self, page) -> List[List[str]]:
-        all_data = []
+    def _extraire_table_native(self, page) -> Tuple[List[str], List[List[str]]]:
+        """Retourne (en-têtes, lignes_données) depuis les tables natives."""
+        headers = []
+        data_rows = []
         tables = page.extract_tables()
         for table in tables:
-            if table and len(table) > 1:
-                for row in table[1:]:
-                    clean_row = [str(cell).strip() if cell else "" for cell in row]
-                    if any(clean_row):
-                        all_data.append(clean_row)
-        return all_data
+            if not table:
+                continue
+            # Première ligne = en-tête
+            if not headers and len(table) > 0:
+                headers = [str(cell).strip() if cell else "" for cell in table[0]]
+            # Reste = données
+            for row in table[1:]:
+                clean_row = [str(cell).strip() if cell else "" for cell in row]
+                if any(clean_row):
+                    data_rows.append(clean_row)
+        return headers, data_rows
 
     def _extraire_texte_simple(self, page) -> List[List[str]]:
         text = page.extract_text()
         if not text:
             return []
-        lines = text.split('\n')
         all_data = []
-        for line in lines:
+        for line in text.split('\n'):
             if line.strip():
                 cells = re.split(r'\s{2,}', line.strip())
                 all_data.append(cells)
         return all_data
 
     def process_pdf(self, pdf_file) -> Tuple[pd.DataFrame, Dict]:
-        """
-        Traite un fichier PDF et extrait les donnees comptables.
-
-        Returns:
-            Tuple (DataFrame, statistiques)
-        """
         start_time = time.time()
         all_data = []
+        all_headers = []
         method_used = "Tableaux natifs"
         llm_used = False
 
         with pdfplumber.open(pdf_file) as pdf:
             pages_to_process = min(len(pdf.pages), self.max_pages)
 
-            for i, page in enumerate(pdf.pages[:pages_to_process]):
-                page_data = self._extraire_table_native(page)
+            for page in pdf.pages[:pages_to_process]:
+                headers, page_data = self._extraire_table_native(page)
 
-                if not page_data and i == 0:
+                # Garder les en-têtes de la première table trouvée
+                if headers and not all_headers:
+                    all_headers = headers
+
+                # Fallback texte pour TOUTES les pages sans table native
+                if not page_data:
                     page_data = self._extraire_texte_simple(page)
-                    if page_data:
+                    if page_data and method_used == "Tableaux natifs":
                         method_used = "Extraction texte"
 
                 all_data.extend(page_data)
 
-        # Detection LLM une seule fois sur les premieres lignes
+        # Détection LLM avec en-têtes + premières lignes
         self._colonnes_detectees = None
+        llm_error = None
         if self._agent and all_data:
-            colonnes = self._agent.identifier_colonnes(all_data)
+            colonnes = self._agent.identifier_colonnes(all_data, all_headers)
             if colonnes:
                 self._colonnes_detectees = colonnes
                 llm_used = True
                 method_used = "Agent LLM (Gemini)"
+            else:
+                llm_error = getattr(self._agent, 'last_error', None)
 
-        # Formater les donnees
+        # Formatage
         formatted_data = []
         for ligne in all_data:
             formatted = self._formater_ligne(ligne)
@@ -216,6 +252,12 @@ class PDFProcessor:
 
         df = pd.DataFrame(formatted_data)
 
+        # Conversion des colonnes numériques
+        if not df.empty:
+            for col in ['Debit', 'Credit']:
+                if col in df.columns:
+                    df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0.0)
+
         processing_time = time.time() - start_time
         stats = {
             'pages_processed': pages_to_process,
@@ -223,6 +265,7 @@ class PDFProcessor:
             'method': method_used,
             'processing_time': processing_time,
             'llm_used': llm_used,
+            'llm_error': llm_error,
             'colonnes_detectees': self._colonnes_detectees
         }
 
