@@ -74,11 +74,24 @@ with st.sidebar:
         help="Laissez vide pour utiliser l'extraction classique"
     )
 
-    # Priorité : champ sidebar > secrets Replit
-    try:
-        api_key = gemini_key.strip() if gemini_key.strip() else st.secrets.get("GEMINI_API_KEY", None)
-    except Exception:
-        api_key = gemini_key.strip() or None
+    # Priorité : champ sidebar > secrets Streamlit
+    # Essayer plusieurs noms de clé possibles dans les secrets
+    api_key = gemini_key.strip() or None
+    if not api_key:
+        for secret_name in ["GEMINI_API_KEY", "gemini_api_key", "GOOGLE_API_KEY", "google_api_key"]:
+            try:
+                val = st.secrets.get(secret_name)
+                if val:
+                    api_key = val
+                    break
+            except Exception:
+                pass
+
+    # Indicateur visuel clé détectée
+    if api_key:
+        st.success(f"🔑 Clé API Gemini détectée ({len(api_key)} caractères)", icon=None)
+    else:
+        st.warning("⚠️ Aucune clé API Gemini — OCR désactivé pour les PDF scannés")
 
 uploaded_file = st.file_uploader(
     "📄 Sélectionnez votre relevé PDF",
@@ -211,21 +224,25 @@ if uploaded_file is not None:
                             )
                     else:
                         ocr_err = stats.get('ocr_error')
-                        if ocr_err:
-                            st.markdown(f"""
-                                <div class="warning-box">
-                                    <strong>⚠️ PDF scanné — OCR requis</strong><br>
-                                    {ocr_err}
-                                </div>
-                            """, unsafe_allow_html=True)
-                        else:
-                            st.markdown("""
-                                <div class="warning-box">
-                                    <strong>⚠️ Aucune donnée extraite</strong><br>
-                                    Le PDF ne semble pas contenir de tableau structuré.<br>
-                                    Essayez d'augmenter la résolution OCR dans les paramètres.
-                                </div>
-                            """, unsafe_allow_html=True)
+                        msg = ocr_err or "Le PDF ne semble pas contenir de tableau structuré. Essayez d'augmenter la résolution OCR."
+                        st.markdown(f"""
+                            <div class="warning-box">
+                                <strong>⚠️ Aucune donnée extraite</strong><br>
+                                {msg}
+                            </div>
+                        """, unsafe_allow_html=True)
+                        with st.expander("🔍 Diagnostic"):
+                            st.write(f"- Méthode tentée : `{stats['method']}`")
+                            st.write(f"- Pages traitées : `{stats['pages_processed']}`")
+                            st.write(f"- Clé API : `{'oui' if api_key else 'non'}`")
+                            st.write(f"- Agent LLM utilisé : `{stats['llm_used']}`")
+                            st.write(f"- Erreur LLM : `{stats.get('llm_error') or 'aucune'}`")
+                            st.write(f"- Erreur OCR : `{stats.get('ocr_error') or 'aucune'}`")
+                            try:
+                                import fitz
+                                st.write("- PyMuPDF : `installé ✓`")
+                            except ImportError:
+                                st.write("- PyMuPDF : `non installé ✗`")
 
                 except Exception as e:
                     st.markdown(f"""
