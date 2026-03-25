@@ -225,8 +225,13 @@ class PDFProcessor:
         ocr_error = None
         fitz_available = False
 
-        # Lire les bytes une seule fois pour pdfplumber + fitz
-        pdf_bytes = pdf_file.read() if hasattr(pdf_file, 'read') else pdf_file.getvalue()
+        # Lire les bytes — getvalue() est toujours disponible sur UploadedFile Streamlit
+        # et ne dépend pas de la position du curseur (contrairement à read())
+        if hasattr(pdf_file, 'getvalue'):
+            pdf_bytes = pdf_file.getvalue()
+        else:
+            pdf_file.seek(0)
+            pdf_bytes = pdf_file.read()
 
         # Vérifier si PyMuPDF est disponible
         try:
