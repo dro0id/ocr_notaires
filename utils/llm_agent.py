@@ -12,7 +12,7 @@ class LLMAgent:
         self.api_key = api_key
         self.url = (
             "https://generativelanguage.googleapis.com/v1beta"
-            "/models/gemini-2.0-flash:generateContent?key=" + api_key
+            "/models/gemini-2.0-flash-lite:generateContent?key=" + api_key
         )
         self.last_error = None
 
