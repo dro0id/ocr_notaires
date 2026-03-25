@@ -1,6 +1,8 @@
 import urllib.request
+import urllib.error
 import json
 import re
+import time
 from typing import Optional, List
 
 class LLMAgent:
@@ -49,34 +51,53 @@ class LLMAgent:
             'Exemple de réponse : {"date": 0, "libelle": 2, "debit": 3, "credit": 4}'
         )
 
-        try:
-            data = json.dumps({
-                "contents": [{"parts": [{"text": prompt}]}]
-            }).encode("utf-8")
+        data = json.dumps({
+            "contents": [{"parts": [{"text": prompt}]}]
+        }).encode("utf-8")
 
-            req = urllib.request.Request(
-                self.url,
-                data=data,
-                headers={"Content-Type": "application/json"}
-            )
+        # Retry avec backoff exponentiel pour les rate limits (429)
+        delays = [2, 5, 10]
+        for attempt, delay in enumerate([0] + delays):
+            if delay:
+                time.sleep(delay)
+            try:
+                req = urllib.request.Request(
+                    self.url,
+                    data=data,
+                    headers={"Content-Type": "application/json"}
+                )
+                with urllib.request.urlopen(req, timeout=20) as response:
+                    result = json.loads(response.read())
+                    texte = result["candidates"][0]["content"]["parts"][0]["text"]
+                    texte_clean = re.sub(r"```json|```", "", texte).strip()
+                    colonnes = json.loads(texte_clean)
+                    cles_attendues = {"date", "libelle", "debit", "credit"}
+                    if isinstance(colonnes, dict) and cles_attendues.issubset(colonnes.keys()):
+                        return colonnes
+                    self.last_error = f"Réponse JSON invalide : {texte_clean}"
+                    return None
 
-            with urllib.request.urlopen(req, timeout=20) as response:
-                result = json.loads(response.read())
-                texte = result["candidates"][0]["content"]["parts"][0]["text"]
-                texte_clean = re.sub(r"```json|```", "", texte).strip()
-                colonnes = json.loads(texte_clean)
-                cles_attendues = {"date", "libelle", "debit", "credit"}
-                if isinstance(colonnes, dict) and cles_attendues.issubset(colonnes.keys()):
-                    return colonnes
-                self.last_error = f"Réponse JSON invalide : {texte_clean}"
+            except urllib.error.HTTPError as e:
+                body = e.read().decode("utf-8", errors="ignore")
+                if e.code == 429 and attempt < len(delays):
+                    # Rate limit → on réessaie
+                    continue
+                if e.code == 429:
+                    self.last_error = (
+                        "Quota Gemini dépassé (429). "
+                        "Vérifiez votre plan sur https://ai.dev/rate-limit "
+                        "ou attendez quelques minutes avant de réessayer."
+                    )
+                else:
+                    self.last_error = f"Erreur HTTP {e.code} : {body[:300]}"
                 return None
-        except urllib.error.HTTPError as e:
-            body = e.read().decode("utf-8", errors="ignore")
-            self.last_error = f"Erreur HTTP {e.code} : {body[:300]}"
-            return None
-        except urllib.error.URLError as e:
-            self.last_error = f"Erreur réseau : {e.reason}"
-            return None
-        except Exception as e:
-            self.last_error = f"Erreur inattendue : {e}"
-            return None
+
+            except urllib.error.URLError as e:
+                self.last_error = f"Erreur réseau : {e.reason}"
+                return None
+
+            except Exception as e:
+                self.last_error = f"Erreur inattendue : {e}"
+                return None
+
+        return None
