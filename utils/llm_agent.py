@@ -10,9 +10,9 @@ class LLMAgent:
 
     # Modèles tentés dans l'ordre (du plus récent au plus ancien)
     MODELS = [
-        "gemini-2.5-flash",
-        "gemini-2.0-flash-lite",
-        "gemini-2.0-flash",
+        "gemini-2.5-flash-lite",  # Meilleur free tier new users (GA depuis 2026)
+        "gemini-2.5-flash",       # Fallback 2.5
+        "gemini-2.0-flash",       # Fallback legacy (retire juin 2026)
     ]
     BASE_URL = "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={key}"
 
