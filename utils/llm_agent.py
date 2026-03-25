@@ -12,7 +12,7 @@ class LLMAgent:
         self.api_key = api_key
         self.url = (
             "https://generativelanguage.googleapis.com/v1beta"
-            "/models/gemini-2.0-flash:generateContent?key=" + api_key
+            "/models/gemini-2.0-flash-lite:generateContent?key=" + api_key
         )
         self.last_error = None
 
@@ -82,14 +82,12 @@ class LLMAgent:
                 if e.code == 429 and attempt < len(delays):
                     # Rate limit → on réessaie
                     continue
-                if e.code == 429:
-                    self.last_error = (
-                        "Quota Gemini dépassé (429). "
-                        "Vérifiez votre plan sur https://ai.dev/rate-limit "
-                        "ou attendez quelques minutes avant de réessayer."
-                    )
-                else:
-                    self.last_error = f"Erreur HTTP {e.code} : {body[:300]}"
+                # Extraire le message Google si disponible
+                try:
+                    api_msg = json.loads(body).get("error", {}).get("message", body[:300])
+                except Exception:
+                    api_msg = body[:300]
+                self.last_error = f"Erreur HTTP {e.code} : {api_msg}"
                 return None
 
             except urllib.error.URLError as e:
