@@ -200,12 +200,15 @@ class PDFProcessor:
 
         # Detection LLM une seule fois sur les premieres lignes
         self._colonnes_detectees = None
+        llm_error = None
         if self._agent and all_data:
             colonnes = self._agent.identifier_colonnes(all_data)
             if colonnes:
                 self._colonnes_detectees = colonnes
                 llm_used = True
                 method_used = "Agent LLM (Gemini)"
+            else:
+                llm_error = getattr(self._agent, 'last_error', None)
 
         # Formater les donnees
         formatted_data = []
@@ -223,6 +226,7 @@ class PDFProcessor:
             'method': method_used,
             'processing_time': processing_time,
             'llm_used': llm_used,
+            'llm_error': llm_error,
             'colonnes_detectees': self._colonnes_detectees
         }
 

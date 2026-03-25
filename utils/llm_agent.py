@@ -10,10 +10,12 @@ class LLMAgent:
         self.api_key = api_key
         self.url = (
             "https://generativelanguage.googleapis.com/v1beta"
-            "/models/gemini-1.5-flash:generateContent?key=" + api_key
+            "/models/gemini-2.0-flash:generateContent?key=" + api_key
         )
+        self.last_error = None
 
     def identifier_colonnes(self, tableau_brut: list) -> Optional[dict]:
+        self.last_error = None
         if not tableau_brut:
             return None
 
@@ -50,7 +52,7 @@ class LLMAgent:
                 headers={"Content-Type": "application/json"}
             )
 
-            with urllib.request.urlopen(req, timeout=10) as response:
+            with urllib.request.urlopen(req, timeout=20) as response:
                 result = json.loads(response.read())
                 texte = result["candidates"][0]["content"]["parts"][0]["text"]
                 texte_clean = re.sub(r"```json|```", "", texte).strip()
@@ -58,6 +60,15 @@ class LLMAgent:
                 cles_attendues = {"date", "libelle", "debit", "credit"}
                 if isinstance(colonnes, dict) and cles_attendues.issubset(colonnes.keys()):
                     return colonnes
+                self.last_error = f"Réponse JSON invalide : {texte_clean}"
                 return None
-        except Exception:
+        except urllib.error.HTTPError as e:
+            body = e.read().decode("utf-8", errors="ignore")
+            self.last_error = f"Erreur HTTP {e.code} : {body[:300]}"
+            return None
+        except urllib.error.URLError as e:
+            self.last_error = f"Erreur réseau : {e.reason}"
+            return None
+        except Exception as e:
+            self.last_error = f"Erreur inattendue : {e}"
             return None
