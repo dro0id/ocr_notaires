@@ -259,13 +259,12 @@ class PDFProcessor:
                     if page_data and method_used == "Tableaux natifs":
                         method_used = "Extraction texte"
 
-                # Vérifier si les données extraites sont réellement utiles
-                # (contiennent des dates ou des montants reconnaissables)
+                # Vérifier si les données extraites sont réellement utiles :
+                # une ligne doit contenir AU MOINS une date ET un montant
                 data_utile = any(
-                    any(
-                        self._detecter_date(str(cell)) or bool(self._nettoyer_montant(str(cell)))
-                        for cell in row if cell
-                    )
+                    any(self._detecter_date(str(cell)) for cell in row if cell)
+                    and
+                    any(bool(self._nettoyer_montant(str(cell))) for cell in row if cell)
                     for row in page_data
                 ) if page_data else False
 
@@ -305,6 +304,26 @@ class PDFProcessor:
                     "PyMuPDF non disponible — redéployez l'application pour installer les dépendances."
                 )
 
+        # Formatage
+        formatted_data = []
+        for ligne in all_data:
+            formatted = self._formater_ligne(ligne)
+            if any(formatted.values()):
+                formatted_data.append(formatted)
+
+        # Si aucune donnée formatée → message d'aide contextuel
+        if not formatted_data and not ocr_error:
+            if not self._agent:
+                ocr_error = (
+                    "Aucune donnée comptable trouvée. "
+                    "Si le PDF est scanné, ajoutez une clé API Gemini dans la sidebar pour activer l'OCR."
+                )
+            elif not fitz_available:
+                ocr_error = (
+                    "Aucune donnée comptable trouvée. "
+                    "PyMuPDF non disponible — redéployez l'application pour installer les dépendances."
+                )
+
         # Détection LLM avec en-têtes + premières lignes
         self._colonnes_detectees = None
         llm_error = None
@@ -318,13 +337,6 @@ class PDFProcessor:
                 method_used = "OCR + Agent LLM (Gemini)" if ocr_used else "Agent LLM (Gemini)"
             else:
                 llm_error = getattr(self._agent, 'last_error', None)
-
-        # Formatage
-        formatted_data = []
-        for ligne in all_data:
-            formatted = self._formater_ligne(ligne)
-            if any(formatted.values()):
-                formatted_data.append(formatted)
 
         df = pd.DataFrame(formatted_data)
 
